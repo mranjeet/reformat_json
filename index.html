@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>JSON to Dart Model Generator without final keyword</title>
+  <link href="https://cdn.jsdelivr.net/npm/jsoneditor@9.10.0/dist/jsoneditor.min.css" rel="stylesheet" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0; padding: 0;
+      display: flex; height: 90vh; overflow: hidden;
+    }
+    #input-pane, #output-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+      box-sizing: border-box;
+      height: 100%;
+    }
+    textarea {
+      flex: none;
+      width: 100%;
+      height: 120px;
+      font-family: monospace;
+      font-size: 14px;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+    button {
+      margin: 10px 10px 10px 0;
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #autoRepairBtn {
+      background-color: #ffcc00;
+      color: black;
+      font-weight: bold;
+      border: none;
+      display: none;
+    }
+    #autoRepairBtn:hover {
+      background-color: #ffb700;
+    }
+    #jsoneditor {
+      flex: 1;
+      border: 1px solid #ddd;
+      min-height: 0;
+      margin-bottom: 10px;
+    }
+    #message {
+      height: 24px;
+      color: red;
+      font-weight: bold;
+    }
+    #dartModelArea {
+      margin-top: 10px;
+      background: #f8f8f8;
+      border: 1px solid #ddd;
+      padding: 10px;
+      font-family: 'Fira Mono', monospace;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      max-height: 40vh;
+      user-select: text;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="input-pane" style="flex: 0.5; display:flex; flex-direction: column;">
+    <h3>Paste JSON Here</h3>
+    <textarea id="jsonInput" placeholder="Paste raw JSON here"></textarea>
+    <div>
+      <button onclick="formatJson()">Format JSON</button>
+      <button id="autoRepairBtn" onclick="autoRepairJson()">Auto Repair JSON</button>
+      <button onclick="generateDartModel()">Generate Dart Model</button>
+    </div>
+    <div id="message"></div>
+    <h3>Dart Model Code (click to copy)</h3>
+    <pre id="dartModelArea" title="Click to copy Dart model code"></pre>
+  </div>
+  <div id="output-pane">
+    <h3>Formatted/Edited Output</h3>
+    <div id="jsoneditor"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jsoneditor@9.10.0/dist/jsoneditor.min.js"></script>
+  <script>
+    const container = document.getElementById('jsoneditor');
+    const messageElem = document.getElementById('message');
+    const autoRepairBtn = document.getElementById('autoRepairBtn');
+    const inputArea = document.getElementById('jsonInput');
+    const dartModelArea = document.getElementById('dartModelArea');
+
+    const editor = new JSONEditor(container, {
+      modes: ['tree', 'code', 'text'],
+      onError(err) {
+        messageElem.textContent = err.toString();
+      },
+      onEvent(node, event) {
+        if (event.type === 'dblclick' && node.type === 'value' && typeof node.value === 'boolean') {
+          node.setValue(!node.value);
+          messageElem.textContent = 'Boolean value toggled!';
+        }
+      }
+    });
+
+    function autoRepair(str) {
+      let repaired = str;
+      repaired = repaired.replace(/'/g, '"');
+      repaired = repaired.replace(/,(\s*[\]}])/g, '$1');
+      repaired = repaired.replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
+      return repaired;
+    }
+
+    function formatJson() {
+      messageElem.textContent = '';
+      autoRepairBtn.style.display = 'none';
+      try {
+        const jsonObj = JSON.parse(inputArea.value);
+        editor.set(jsonObj);
+        messageElem.textContent = 'JSON formatted successfully!';
+      } catch (e) {
+        messageElem.textContent = 'Invalid JSON! You can try auto repair.';
+        autoRepairBtn.style.display = 'inline-block';
+      }
+    }
+
+    function autoRepairJson() {
+      const repairedStr = autoRepair(inputArea.value);
+      try {
+        const jsonObj = JSON.parse(repairedStr);
+        inputArea.value = repairedStr;
+        editor.set(jsonObj);
+        messageElem.textContent = 'Auto repair succeeded and JSON formatted!';
+        autoRepairBtn.style.display = 'none';
+      } catch (e) {
+        messageElem.textContent = 'Auto repair failed!';
+      }
+    }
+
+    function capitalize(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1).replace(/[^a-zA-Z0-9]/g, '');
+    }
+
+    function dartType(value, className) {
+      if (value === null) return 'dynamic';
+      if (Array.isArray(value)) {
+        if (value.length === 0) return 'List<dynamic>';
+        return `List<${dartType(value[0], className)}>`;
+      }
+      switch (typeof value) {
+        case 'string': return 'String';
+        case 'number': return Number.isInteger(value) ? 'int' : 'double';
+        case 'boolean': return 'bool';
+        case 'object':
+          return className;
+        default: return 'dynamic';
+      }
+    }
+
+    function generateDartModel() {
+      dartModelArea.textContent = '';
+      messageElem.textContent = '';
+      let jsonObj;
+      try {
+        jsonObj = editor.get();
+      } catch {
+        messageElem.textContent = 'Please format valid JSON first!';
+        return;
+      }
+      if (!jsonObj || typeof jsonObj !== 'object') {
+        messageElem.textContent = 'Output is not a JSON object. Cannot generate model.';
+        return;
+      }
+      // Generate model code, root class is Autogenerated
+      const modelCode = generateDartModelClass(jsonObj, 'Autogenerated');
+      dartModelArea.textContent = modelCode;
+    }
+
+    function generateDartModelClass(jsonObj, rootClassName = 'Autogenerated') {
+      const seenClasses = new Map();
+
+      function indent(lines, level = 1) {
+        const indentation = '  '.repeat(level);
+        return lines.split('\n').map(line => (line ? indentation + line : '')).join('\n');
+      }
+
+      function getNestedClassName(parentClassName, key, isRoot) {
+        if (isRoot) return parentClassName;
+        return capitalize(key);
+      }
+
+      function generateClass(obj, className, isRoot = false) {
+        if (seenClasses.has(className)) return;
+        let fields = [];
+        let constructorParams = [];
+        let fromJsonLines = [];
+        let toJsonLines = [];
+        const keys = Object.keys(obj);
+
+        for (const key of keys) {
+          const val = obj[key];
+          if (val && typeof val === 'object' && !Array.isArray(val)) {
+            const nestedClassName = getNestedClassName(className, key, false);
+            generateClass(val, nestedClassName, false);
+            fields.push(`${nestedClassName}? ${key};`);
+            constructorParams.push(`this.${key},`);
+            fromJsonLines.push(`${key} = json.containsKey('${key}') && json['${key}'] != null ? ${nestedClassName}.fromJson(json['${key}']) : null;`);
+            toJsonLines.push(`'${key}': ${key}?.toJson(),`);
+          } else if (Array.isArray(val)) {
+            if (val.length > 0 && val[0] && typeof val[0] === 'object' && !Array.isArray(val[0])) {
+              const nestedClassName = getNestedClassName(className, key, false);
+              generateClass(val[0], nestedClassName, false);
+              fields.push(`List<${nestedClassName}>? ${key};`);
+              constructorParams.push(`this.${key},`);
+              fromJsonLines.push(`${key} = json.containsKey('${key}') && json['${key}'] != null ? (json['${key}'] as List).map((e) => ${nestedClassName}.fromJson(e)).toList() : null;`);
+              toJsonLines.push(`'${key}': ${key}?.map((e) => e.toJson()).toList(),`);
+            } else {
+              const type = dartType(val, '');
+              fields.push(`${type}? ${key};`);
+              constructorParams.push(`this.${key},`);
+              fromJsonLines.push(`${key} = json.containsKey('${key}') ? json['${key}'] as List<dynamic>? : null;`);
+              toJsonLines.push(`'${key}': ${key},`);
+            }
+          } else {
+            const type = dartType(val, '');
+            fields.push(`${type}? ${key};`);
+            constructorParams.push(`this.${key},`);
+            fromJsonLines.push(`${key} = json.containsKey('${key}') ? json['${key}'] : null;`);
+            toJsonLines.push(`'${key}': ${key},`);
+          }
+        }
+
+        const classStr =
+`class ${className} {
+${indent(fields.join('\n'))}
+
+  const ${className}({
+${indent(constructorParams.join('\n'))}  });
+
+  ${className}.fromJson(Map<String, dynamic> json) {
+${indent(fromJsonLines.join('\n'), 2)}
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+${indent(toJsonLines.join('\n'), 3)}
+    };
+  }
+}`;
+
+        seenClasses.set(className, classStr);
+      }
+
+      generateClass(jsonObj, rootClassName, true);
+
+      let result = '';
+      if (seenClasses.has(rootClassName)) {
+        result += seenClasses.get(rootClassName) + '\n\n';
+      }
+      for (const [className, cls] of seenClasses.entries()) {
+        if (className !== rootClassName) {
+          result += cls + '\n\n';
+        }
+      }
+      return result.trim();
+    }
+
+    dartModelArea.onclick = () => {
+      if (dartModelArea.textContent.trim() === '') return;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(dartModelArea.textContent);
+        messageElem.textContent = 'Dart model code copied to clipboard!';
+        setTimeout(() => { messageElem.textContent = ''; }, 2000);
+      }
+    };
+  </script>
+</body>
+</html>
