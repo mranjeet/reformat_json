@@ -177,13 +177,38 @@
             }
         });
 
-        function autoRepair(str) {
-            let repaired = str;
-            repaired = repaired.replace(/'/g, '"');
-            repaired = repaired.replace(/,(\s*[\]}])/g, '$1');
-            repaired = repaired.replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
-            return repaired;
+      function autoRepair(str) {
+    let repaired = str;
+
+    // Replace single quotes with double quotes (if any)
+    repaired = repaired.replace(/'/g, '"');
+
+    // Remove trailing commas before } or ]
+    repaired = repaired.replace(/,(\s*[\]}])/g, '$1');
+
+    // Add quotes around unquoted property names (keys)
+    repaired = repaired.replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
+
+    // Add quotes around unquoted string values (simple heuristics)
+    // Match colon, optional whitespace, then an unquoted string value (without leading/trailing quotes, numbers, booleans, null, or brackets)
+    repaired = repaired.replace(/:\s*([a-zA-Z0-9\-_.:]+)(?=\s*[,\}])/g, (match, p1) => {
+        // Check if p1 is a boolean, null, or number already
+        if (
+            p1 === 'true' ||
+            p1 === 'false' ||
+            p1 === 'null' ||
+            !isNaN(Number(p1)) // Covers integers, floats, and negative numbers
+        ) {
+            return `: ${p1}`;
         }
+
+        // If p1 looks like ISO timestamp or UUID (contains - or :). We treat all as strings and quote
+        return `: "${p1}"`;
+    });
+
+    return repaired;
+}
+
 
         function formatJson() {
             messageElem.textContent = '';
