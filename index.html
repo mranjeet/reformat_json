@@ -191,20 +191,25 @@
 
     // Add quotes around unquoted string values (simple heuristics)
     // Match colon, optional whitespace, then an unquoted string value (without leading/trailing quotes, numbers, booleans, null, or brackets)
-    repaired = repaired.replace(/:\s*([a-zA-Z0-9\-_.:]+)(?=\s*[,\}])/g, (match, p1) => {
-        // Check if p1 is a boolean, null, or number already
-        if (
-            p1 === 'true' ||
-            p1 === 'false' ||
-            p1 === 'null' ||
-            !isNaN(Number(p1)) // Covers integers, floats, and negative numbers
-        ) {
-            return `: ${p1}`;
+    // (non-greedy, to not consume multiple fields)
+    repaired = repaired.replace(/:\s*([^",\[\]\{\}\s][^,\}\]]*)/g, (match, p1) => {
+        // Trim the value
+        let val = p1.trim();
+
+        // Ignore if val is true/false/null/number
+        if (val === 'true' || val === 'false' || val === 'null' || !isNaN(Number(val))) {
+            return `: ${val}`;
+        }
+        // If val is empty, return as is (probably empty object or array)
+        if (!val.length) {
+            return `: ${val}`;
         }
 
-        // If p1 looks like ISO timestamp or UUID (contains - or :). We treat all as strings and quote
-        return `: "${p1}"`;
+        // Otherwise, quote the value, escaping quotes inside
+        const escaped = val.replace(/"/g, '\\"');
+        return `: "${escaped}"`;
     });
+
 
     return repaired;
 }
