@@ -302,55 +302,69 @@
                 let toJsonLines = [];
                 const keys = Object.keys(obj);
 
-                for (const key of keys) {
+
+                // Add this helper function before the generateClass function
+function toDartPropertyName(key) {
+    if (!key || typeof key !== 'string') return key;
+    // Convert snake_case, kebab-case to camelCase
+    return key.replace(/[_-][a-z]/g, match => match.slice(-1).toUpperCase())
+              .replace(/^./, match => match.toLowerCase());
+}
+
+// Then update the for loop block to use toDartPropertyName(key):
+for (const key of keys) {
+    const dartKey = toDartPropertyName(key);
     const val = obj[key];
     if (val && typeof val === 'object' && !Array.isArray(val)) {
         // Nested object
-        const nestedClassName = getNestedClassName(className, key, false);
+        const nestedClassName = getNestedClassName(className, dartKey, false);
         generateClass(val, nestedClassName, false);
-        fields.push(`${nestedClassName}? ${key};`);
-        constructorParams.push(`this.${key},`);
-        fromJsonLines.push(`${key} = json.containsKey('${key}') && json['${key}'] != null ? ${nestedClassName}.fromJson(json['${key}']) : null;`);
-        toJsonLines.push(`'${key}': ${key}?.toJson(),`);
+        fields.push(`${nestedClassName}? ${dartKey};`);
+        constructorParams.push(`this.${dartKey},`);
+        fromJsonLines.push(`${dartKey} = json.containsKey('${key}') && json['${key}'] != null ? ${nestedClassName}.fromJson(json['${key}']) : null;`);
+        toJsonLines.push(`'${key}': ${dartKey}?.toJson(),`);
     } else if (Array.isArray(val)) {
         // Array handling
         if (val.length === 0) {
-            fields.push(`List<dynamic>? ${key};`);
-            constructorParams.push(`this.${key},`);
-            fromJsonLines.push(`${key} = json.containsKey('${key}') ? json['${key}'] as List<dynamic>? : null;`);
-            toJsonLines.push(`'${key}': ${key},`);
+            fields.push(`List<dynamic>? ${dartKey};`);
+            constructorParams.push(`this.${dartKey},`);
+            fromJsonLines.push(`${dartKey} = json.containsKey('${key}') ? json['${key}'] as List<dynamic>? : null;`);
+            toJsonLines.push(`'${key}': ${dartKey},`);
         } else {
             const firstVal = val[0];
             if (firstVal && typeof firstVal === 'object' && !Array.isArray(firstVal)) {
                 // Array of nested objects
-                const nestedClassName = getNestedClassName(className, key, false);
+                const nestedClassName = getNestedClassName(className, dartKey, false);
                 generateClass(firstVal, nestedClassName, false);
-                fields.push(`List<${nestedClassName}>? ${key};`);
-                constructorParams.push(`this.${key},`);
-                fromJsonLines.push(`${key} = json.containsKey('${key}') && json['${key}'] != null ? (json['${key}'] as List).map((e) => ${nestedClassName}.fromJson(e)).toList() : null;`);
-                toJsonLines.push(`'${key}': ${key}?.map((e) => e.toJson()).toList(),`);
-                
+                fields.push(`List<${nestedClassName}>? ${dartKey};`);
+                constructorParams.push(`this.${dartKey},`);
+                fromJsonLines.push(`${dartKey} = json.containsKey('${key}') && json['${key}'] != null ? (json['${key}'] as List).map((e) => ${nestedClassName}.fromJson(e)).toList() : null;`);
+                toJsonLines.push(`'${key}': ${dartKey}?.map((e) => e.toJson()).toList(),`);
             } else if (typeof firstVal === 'string') {
-                fields.push(`List<String>? ${key};`);
-                constructorParams.push(`this.${key},`);
-                fromJsonLines.push(`${key} = json.containsKey('${key}') ? (json['${key}'] as List?)?.cast<String>() : null;`);
-                toJsonLines.push(`'${key}': ${key},`);
+                // Array of strings
+                fields.push(`List<String>? ${dartKey};`);
+                constructorParams.push(`this.${dartKey},`);
+                fromJsonLines.push(`${dartKey} = json.containsKey('${key}') ? (json['${key}'] as List?)?.cast<String>() : null;`);
+                toJsonLines.push(`'${key}': ${dartKey},`);
             } else {
+                // Other array types
                 const elementType = dartType(firstVal, '');
-                fields.push(`List<${elementType}>? ${key};`);
-                constructorParams.push(`this.${key},`);
-                fromJsonLines.push(`${key} = json.containsKey('${key}') ? json['${key}'] as List<dynamic>? : null;`);
-                toJsonLines.push(`'${key}': ${key},`);
+                fields.push(`List<${elementType}>? ${dartKey};`);
+                constructorParams.push(`this.${dartKey},`);
+                fromJsonLines.push(`${dartKey} = json.containsKey('${key}') ? json['${key}'] as List<dynamic>? : null;`);
+                toJsonLines.push(`'${key}': ${dartKey},`);
             }
         }
     } else {
+        // Primitive types
         const type = dartType(val, '');
-        fields.push(`${type}? ${key};`);
-        constructorParams.push(`this.${key},`);
-        fromJsonLines.push(`${key} = json.containsKey('${key}') ? json['${key}'] : null;`);
-        toJsonLines.push(`'${key}': ${key},`);
+        fields.push(`${type}? ${dartKey};`);
+        constructorParams.push(`this.${dartKey},`);
+        fromJsonLines.push(`${dartKey} = json.containsKey('${key}') ? json['${key}'] : null;`);
+        toJsonLines.push(`'${key}': ${dartKey},`);
     }
 }
+
 
 
 
