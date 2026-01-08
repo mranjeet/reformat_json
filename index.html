@@ -303,38 +303,56 @@
                 const keys = Object.keys(obj);
 
                 for (const key of keys) {
-                    const val = obj[key];
-                    if (val && typeof val === 'object' && !Array.isArray(val)) {
-                        const nestedClassName = getNestedClassName(className, key, false);
-                        generateClass(val, nestedClassName, false);
-                        fields.push(`${nestedClassName}? ${key};`);
-                        constructorParams.push(`this.${key},`);
-                        fromJsonLines.push(`${key} = json.containsKey('${key}') && json['${key}'] != null ? ${nestedClassName}.fromJson(json['${key}']) : null;`);
-                        toJsonLines.push(`'${key}': ${key}?.toJson(),`);
-                    } else if (Array.isArray(val)) {
-                        if (val.length > 0 && val[0] && typeof val[0] === 'object' && !Array.isArray(val[0])) {
-                            const nestedClassName = getNestedClassName(className, key, false);
-                            generateClass(val[0], nestedClassName, false);
-                            fields.push(`List<${nestedClassName}>? ${key};`);
-                            constructorParams.push(`this.${key},`);
-                            fromJsonLines.push(`${key} = json.containsKey('${key}') && json['${key}'] != null ? (json['${key}'] as List).map((e) => ${nestedClassName}.fromJson(e)).toList() : null;`);
-                            toJsonLines.push(`'${key}': ${key}?.map((e) => e.toJson()).toList(),`);
-                        } else {
-                            let type = 'List<dynamic>';
-                            if (val.length > 0) type = dartType(val[0], '');
-                            fields.push(`${type}? ${key};`);
-                            constructorParams.push(`this.${key},`);
-                            fromJsonLines.push(`${key} = json.containsKey('${key}') ? json['${key}'] as List<dynamic>? : null;`);
-                            toJsonLines.push(`'${key}': ${key},`);
-                        }
-                    } else {
-                        const type = dartType(val, '');
-                        fields.push(`${type}? ${key};`);
-                        constructorParams.push(`this.${key},`);
-                        fromJsonLines.push(`${key} = json.containsKey('${key}') ? json['${key}'] : null;`);
-                        toJsonLines.push(`'${key}': ${key},`);
-                    }
-                }
+    const val = obj[key];
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+        // Nested object
+        const nestedClassName = getNestedClassName(className, key, false);
+        generateClass(val, nestedClassName, false);
+        fields.push(`${nestedClassName}? ${key};`);
+        constructorParams.push(`this.${key},`);
+        fromJsonLines.push(`${key} = json.containsKey('${key}') && json['${key}'] != null ? ${nestedClassName}.fromJson(json['${key}']) : null;`);
+        toJsonLines.push(`'${key}': ${key}?.toJson(),`);
+    } else if (Array.isArray(val)) {
+        // Array handling
+        if (val.length === 0) {
+            fields.push(`List<dynamic>? ${key};`);
+            constructorParams.push(`this.${key},`);
+            fromJsonLines.push(`${key} = json.containsKey('${key}') ? json['${key}'] as List<dynamic>? : null;`);
+            toJsonLines.push(`'${key}': ${key},`);
+        } else {
+            const firstVal = val[0];
+            if (firstVal && typeof firstVal === 'object' && !Array.isArray(firstVal)) {
+                // Array of nested objects
+                const nestedClassName = getNestedClassName(className, key, false);
+                generateClass(firstVal, nestedClassName, false);
+                fields.push(`List<${nestedClassName}>? ${key};`);
+                constructorParams.push(`this.${key},`);
+                fromJsonLines.push(`${key} = json.containsKey('${key}') && json['${key}'] != null ? (json['${key}'] as List).map((e) => ${nestedClassName}.fromJson(e)).toList() : null;`);
+                toJsonLines.push(`'${key}': ${key}?.map((e) => e.toJson()).toList(),`);
+                
+            } else if (typeof firstVal === 'string') {
+                fields.push(`List<String>? ${key};`);
+                constructorParams.push(`this.${key},`);
+                fromJsonLines.push(`${key} = json.containsKey('${key}') ? (json['${key}'] as List?)?.cast<String>() : null;`);
+                toJsonLines.push(`'${key}': ${key},`);
+            } else {
+                const elementType = dartType(firstVal, '');
+                fields.push(`List<${elementType}>? ${key};`);
+                constructorParams.push(`this.${key},`);
+                fromJsonLines.push(`${key} = json.containsKey('${key}') ? json['${key}'] as List<dynamic>? : null;`);
+                toJsonLines.push(`'${key}': ${key},`);
+            }
+        }
+    } else {
+        const type = dartType(val, '');
+        fields.push(`${type}? ${key};`);
+        constructorParams.push(`this.${key},`);
+        fromJsonLines.push(`${key} = json.containsKey('${key}') ? json['${key}'] : null;`);
+        toJsonLines.push(`'${key}': ${key},`);
+    }
+}
+
+
 
                 const classStr =
                     `class ${className} {
